@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>rebirth-box2d — interactive 2D physics demo</title>
+<meta name="description" content="Erin Catto's classic Box2D-Lite 2D physics engine rewritten in 100% safe Rust and compiled to WebAssembly. Interactive rigid body simulation, sequential impulses, constraints, and warm starting.">
+<style>
+  :root {
+    --bg: #0a0d14; --panel: #111622; --card: #161d2d; --line: #222d42; --text: #e6edf6; --dim: #8b99b0;
+    --acc: #38bdf8; --acc2: #f59e0b; --bad: #f43f5e; --good: #10b981;
+    --box-dyn: #60a5fa; --box-stat: #475569; --joint: #f59e0b; --bomb: #34d399;
+    --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, sans-serif; overflow-x: hidden; }
+  body { min-height: 100vh; padding: 0 max(16px, env(safe-area-inset-right)) 28px max(16px, env(safe-area-inset-left)); }
+  a { color: var(--acc); text-decoration: none; } a:hover { text-decoration: underline; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 20px; max-width: 1240px; margin: 0 auto; padding: 20px 0 12px; }
+  h1 { margin: 0; font: 700 22px var(--mono); letter-spacing: .02em; }
+  h1 span { color: var(--acc); }
+  .tag { color: var(--dim); flex: 1 1 360px; font-size: 14px; }
+  .links { font: 13px var(--mono); display: flex; gap: 14px; }
+  main { max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; }
+  .stage { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; }
+  .tabs { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; background: #0c1018; }
+  .tabs button { flex: 0 0 auto; background: transparent; border: 1px solid transparent; color: var(--dim); padding: 7px 13px; border-radius: 8px; font: 600 13px var(--mono); cursor: pointer; transition: all .15s; }
+  .tabs button:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+  .tabs button[aria-selected="true"] { color: #020617; background: var(--acc); }
+  .canvas-wrap { position: relative; width: 100%; height: min(64vh, 580px); min-height: 380px; }
+  #cv { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; background: radial-gradient(ellipse at 50% 80%, #151d2c 0%, #0a0d14 75%); }
+  .hint { padding: 10px 16px; color: var(--dim); font-size: 13.5px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; background: #0c1018; }
+  .hint b { color: var(--text); font-weight: 600; }
+  aside { display: flex; flex-direction: column; gap: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px; }
+  .card h2 { margin: 0 0 10px; font: 700 11px var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+  .stat { display: flex; justify-content: space-between; font: 13.5px var(--mono); padding: 3.5px 0; border-bottom: 1px solid rgba(255,255,255,0.03); }
+  .stat b { color: var(--acc); font-weight: 600; }
+  .stat b.green { color: var(--good); }
+  label { display: block; font-size: 13px; color: var(--dim); margin: 10px 0 3px; }
+  label output { float: right; color: var(--text); font-family: var(--mono); }
+  input[type=range] { width: 100%; accent-color: var(--acc); cursor: pointer; }
+  .toggles { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .chk { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); cursor: pointer; }
+  .chk input { accent-color: var(--acc); cursor: pointer; }
+  .btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; }
+  .btn { width: 100%; padding: 9px 12px; background: #182234; color: var(--text); border: 1px solid var(--line); border-radius: 8px; font: 600 13px var(--mono); cursor: pointer; transition: all .15s; text-align: center; }
+  .btn:hover { border-color: var(--acc); background: #202c44; }
+  .btn-primary { background: #0284c7; border-color: #38bdf8; color: #fff; }
+  .btn-primary:hover { background: #0369a1; }
+  footer { max-width: 1240px; margin: 18px auto 0; color: var(--dim); font-size: 13px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  #err { max-width: 1240px; margin: 0 auto 12px; color: var(--bad); display: none; padding: 12px; background: rgba(244,63,94,0.1); border-radius: 8px; border: 1px solid var(--bad); font-family: var(--mono); font-size: 13px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } .canvas-wrap { height: 52vh; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>rebirth-box2d <span>0.1.0</span></h1>
+  <div class="tag">Erin Catto's classic Box2D-Lite 2D physics engine reincarnated in 100% safe Rust + WebAssembly</div>
+  <div class="links">
+    <a href="https://github.com/markankamaransheogarat-sys/rebirth-box2d" target="_blank" rel="noopener">GitHub</a>
+    <a href="https://crates.io/crates/rebirth-box2d" target="_blank" rel="noopener">crates.io</a>
+  </div>
+</header>
+
+<div id="err"></div>
+
+<main>
+  <div class="stage">
+    <div class="tabs" role="tablist">
+      <button role="tab" data-demo="4" aria-selected="true">Pyramid</button>
+      <button role="tab" data-demo="6" aria-selected="false">Bridge</button>
+      <button role="tab" data-demo="7" aria-selected="false">Dominos</button>
+      <button role="tab" data-demo="5" aria-selected="false">Teeter</button>
+      <button role="tab" data-demo="1" aria-selected="false">Pendulum</button>
+      <button role="tab" data-demo="3" aria-selected="false">Stack</button>
+      <button role="tab" data-demo="2" aria-selected="false">Friction</button>
+      <button role="tab" data-demo="0" aria-selected="false">Single Box</button>
+    </div>
+    <div class="canvas-wrap">
+      <canvas id="cv"></canvas>
+    </div>
+    <div class="hint">
+      <span>🖱️ <b>Drag & Throw</b> boxes with mouse/touch &bull; Press <b>[B]</b> to launch bomb &bull; Press <b>[Space]</b> to pause</span>
+      <button class="btn btn-primary" id="btn-bomb" style="width: auto; padding: 5px 14px; font-size: 12px;">🚀 Launch Bomb (B)</button>
+    </div>
+  </div>
+
+  <aside>
+    <div class="card">
+      <h2>Simulation Telemetry</h2>
+      <div class="stat"><span>Frame Rate</span><b id="fps" class="green">60 FPS</b></div>
+      <div class="stat"><span>Step Time (WASM)</span><b id="step-time">0.00 ms</b></div>
+      <div class="stat"><span>Bodies (active)</span><b id="stat-bodies">0</b></div>
+      <div class="stat"><span>Joints</span><b id="stat-joints">0</b></div>
+      <div class="stat"><span>Active Arbiters</span><b id="stat-arbiters">0</b></div>
+    </div>
+
+    <div class="card">
+      <h2>Physics Parameters</h2>
+      <label>Gravity: <output id="out-grav">-10 m/s²</output></label>
+      <input type="range" id="sl-grav" min="-30" max="0" value="-10" step="1">
+
+      <label>Velocity Iterations: <output id="out-iter">10</output></label>
+      <input type="range" id="sl-iter" min="1" max="30" value="10" step="1">
+
+      <div class="toggles">
+        <label class="chk"><input type="checkbox" id="chk-warm" checked> Warm Starting (Impulse Cache)</label>
+        <label class="chk"><input type="checkbox" id="chk-accum" checked> Accumulate Impulses</label>
+        <label class="chk"><input type="checkbox" id="chk-pos" checked> Position Bias Correction</label>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="btn-pause">⏸️ Pause</button>
+        <button class="btn" id="btn-reset">🔄 Reset Scene</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Crate Specifications</h2>
+      <div class="stat"><span>Safety</span><b>#![forbid(unsafe_code)]</b></div>
+      <div class="stat"><span>Solver</span><b>Sequential Impulses</b></div>
+      <div class="stat"><span>Original Author</span><b>Erin Catto (2006)</b></div>
+      <div class="stat"><span>Binary Size</span><b>~75 KB (no_std / wasm)</b></div>
+    </div>
+  </aside>
+</main>
+
+<footer>
+  <span>&copy; 2026 markankamaransheogarat-sys. MIT License. Based on Box2D-Lite by Erin Catto.</span>
+  <span>Zero Unsafe Code &bull; WebAssembly Fast Path</span>
+</footer>
+
+<script type="module">
+import init, { WasmWorld } from './pkg/rebirth_box2d_wasm.js';
+
+const errEl = document.getElementById('err');
+function showErr(msg) {
+  errEl.textContent = msg;
+  errEl.style.display = 'block';
+}
+
+try {
+  await init();
+} catch (e) {
+  showErr('Failed to load WASM module: ' + e);
+  throw e;
+}
+
+const cv = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+let world = new WasmWorld(0.0, -10.0, 10);
+let currentDemo = 4; // Pyramid by default
+world.load_demo(currentDemo);
+
+let paused = false;
+let gravityY = -10.0;
+let iterations = 10;
+
+// Camera / Viewport
+let zoom = 24.0; // pixels per physics meter
+let panX = 0.0;
+let panY = -3.0; // world meter center
+
+function resize() {
+  const rect = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(rect.width * dpr);
+  cv.height = Math.round(rect.height * dpr);
+}
+window.addEventListener('resize', resize);
+resize();
+
+function worldToScreen(wx, wy) {
+  const cx = cv.width * 0.5;
+  const cy = cv.height * 0.5;
+  const sx = cx + (wx - panX) * zoom * (window.devicePixelRatio || 1);
+  const sy = cy - (wy - panY) * zoom * (window.devicePixelRatio || 1);
+  return [sx, sy];
+}
+
+function screenToWorld(sx, sy) {
+  const dpr = window.devicePixelRatio || 1;
+  const cx = cv.width * 0.5;
+  const cy = cv.height * 0.5;
+  const wx = panX + (sx * dpr - cx) / (zoom * dpr);
+  const wy = panY - (sy * dpr - cy) / (zoom * dpr);
+  return [wx, wy];
+}
+
+// Telemetry Elements
+const elFps = document.getElementById('fps');
+const elStepTime = document.getElementById('step-time');
+const elBodies = document.getElementById('stat-bodies');
+const elJoints = document.getElementById('stat-joints');
+const elArbiters = document.getElementById('stat-arbiters');
+
+// Dragging
+let draggedBody = -1;
+let dragOffset = [0, 0];
+let lastMouseWorld = [0, 0];
+let mouseVel = [0, 0];
+
+cv.addEventListener('pointerdown', (e) => {
+  const rect = cv.getBoundingClientRect();
+  const [wx, wy] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+  lastMouseWorld = [wx, wy];
+
+  const found = world.find_body_at(wx, wy);
+  if (found >= 0) {
+    draggedBody = found;
+    cv.setPointerCapture(e.pointerId);
+  }
+});
+
+cv.addEventListener('pointermove', (e) => {
+  const rect = cv.getBoundingClientRect();
+  const [wx, wy] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
+  mouseVel = [(wx - lastMouseWorld[0]) * 60, (wy - lastMouseWorld[1]) * 60];
+  lastMouseWorld = [wx, wy];
+
+  if (draggedBody >= 0) {
+    world.set_body_position(draggedBody, wx, wy);
+    world.set_body_velocity(draggedBody, mouseVel[0] * 0.5, mouseVel[1] * 0.5);
+  }
+});
+
+cv.addEventListener('pointerup', (e) => {
+  if (draggedBody >= 0) {
+    world.set_body_velocity(draggedBody, mouseVel[0], mouseVel[1]);
+    draggedBody = -1;
+  }
+});
+
+function launchBomb() {
+  const rx = (Math.random() - 0.5) * 20.0;
+  const idx = world.add_box(rx, 15.0, 1.2, 1.2, 80.0, 0.2);
+  world.set_body_velocity(idx, -rx * 1.5, -12.0);
+}
+
+document.getElementById('btn-bomb').addEventListener('click', launchBomb);
+
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'b' || e.key === 'B' || e.code === 'KeyB') {
+    launchBomb();
+  } else if (e.code === 'Space') {
+    e.preventDefault();
+    paused = !paused;
+    document.getElementById('btn-pause').textContent = paused ? '▶️ Resume' : '⏸️ Pause';
+  }
+});
+
+// UI Event Handlers
+document.querySelectorAll('.tabs button').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tabs button').forEach(b => b.setAttribute('aria-selected', 'false'));
+    btn.setAttribute('aria-selected', 'true');
+    currentDemo = parseInt(btn.dataset.demo, 10);
+    world.load_demo(currentDemo);
+  });
+});
+
+document.getElementById('sl-grav').addEventListener('input', (e) => {
+  gravityY = parseFloat(e.target.value);
+  document.getElementById('out-grav').textContent = `${gravityY} m/s²`;
+  world.set_gravity(0.0, gravityY);
+});
+
+document.getElementById('sl-iter').addEventListener('input', (e) => {
+  iterations = parseInt(e.target.value, 10);
+  document.getElementById('out-iter').textContent = iterations;
+  world.set_iterations(iterations);
+});
+
+document.getElementById('chk-warm').addEventListener('change', (e) => {
+  world.set_warm_starting(e.target.checked);
+});
+
+document.getElementById('chk-accum').addEventListener('change', (e) => {
+  world.set_accumulate_impulses(e.target.checked);
+});
+
+document.getElementById('chk-pos').addEventListener('change', (e) => {
+  world.set_position_correction(e.target.checked);
+});
+
+document.getElementById('btn-pause').addEventListener('click', () => {
+  paused = !paused;
+  document.getElementById('btn-pause').textContent = paused ? '▶️ Resume' : '⏸️ Pause';
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  world.load_demo(currentDemo);
+});
+
+// Main Loop
+let lastTime = performance.now();
+let frameCount = 0;
+let lastFpsTime = performance.now();
+
+function render() {
+  requestAnimationFrame(render);
+
+  const now = performance.now();
+  frameCount++;
+  if (now - lastFpsTime >= 500) {
+    const fps = Math.round((frameCount * 1000) / (now - lastFpsTime));
+    elFps.textContent = `${fps} FPS`;
+    frameCount = 0;
+    lastFpsTime = now;
+  }
+
+  // Physics Step
+  let stepDur = 0;
+  if (!paused) {
+    const t0 = performance.now();
+    world.step(1.0 / 60.0);
+    stepDur = performance.now() - t0;
+    elStepTime.textContent = `${stepDur.toFixed(2)} ms`;
+  }
+
+  // Telemetry updates
+  const bodyCount = world.body_count();
+  elBodies.textContent = bodyCount;
+  elJoints.textContent = world.joint_count();
+  elArbiters.textContent = world.arbiter_count();
+
+  // Render Scene
+  const dpr = window.devicePixelRatio || 1;
+  ctx.clearRect(0, 0, cv.width, cv.height);
+
+  // Draw Grid lines
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+  ctx.lineWidth = 1;
+  const gridStep = 5.0;
+  const [minWx, minWy] = screenToWorld(0, cv.height / dpr);
+  const [maxWx, maxWy] = screenToWorld(cv.width / dpr, 0);
+
+  const startX = Math.floor(minWx / gridStep) * gridStep;
+  for (let gx = startX; gx <= maxWx; gx += gridStep) {
+    const [sx] = worldToScreen(gx, 0);
+    ctx.beginPath();
+    ctx.moveTo(sx, 0);
+    ctx.lineTo(sx, cv.height);
+    ctx.stroke();
+  }
+  const startY = Math.floor(minWy / gridStep) * gridStep;
+  for (let gy = startY; gy <= maxWy; gy += gridStep) {
+    const [, sy] = worldToScreen(0, gy);
+    ctx.beginPath();
+    ctx.moveTo(0, sy);
+    ctx.lineTo(cv.width, sy);
+    ctx.stroke();
+  }
+
+  // Draw Joints
+  const jointData = world.get_joints_data();
+  ctx.strokeStyle = '#f59e0b';
+  ctx.lineWidth = 2 * dpr;
+  for (let i = 0; i < jointData.length; i += 4) {
+    const [sx1, sy1] = worldToScreen(jointData[i], jointData[i + 1]);
+    const [sx2, sy2] = worldToScreen(jointData[i + 2], jointData[i + 3]);
+
+    ctx.beginPath();
+    ctx.moveTo(sx1, sy1);
+    ctx.lineTo(sx2, sy2);
+    ctx.stroke();
+
+    // Anchor circle
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(sx1, sy1, 4 * dpr, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(sx2, sy2, 4 * dpr, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Draw Bodies
+  const bodyData = world.get_bodies_data();
+  // 8 floats per body: x, y, rotation, width_x, width_y, is_static, vx, vy
+  for (let i = 0; i < bodyData.length; i += 8) {
+    const bx = bodyData[i];
+    const by = bodyData[i + 1];
+    const rot = bodyData[i + 2];
+    const bw = bodyData[i + 3];
+    const bh = bodyData[i + 4];
+    const isStatic = bodyData[i + 5] > 0.5;
+    const bodyIdx = i / 8;
+
+    const [sx, sy] = worldToScreen(bx, by);
+    const pixelW = bw * zoom * dpr;
+    const pixelH = bh * zoom * dpr;
+
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(-rot);
+
+    if (isStatic) {
+      ctx.fillStyle = '#1e293b';
+      ctx.strokeStyle = '#334155';
+      ctx.lineWidth = 2 * dpr;
+    } else if (bodyIdx === draggedBody) {
+      ctx.fillStyle = '#0284c7';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 2 * dpr;
+    } else {
+      ctx.fillStyle = '#1e3a5f';
+      ctx.strokeStyle = '#38bdf8';
+      ctx.lineWidth = 1.5 * dpr;
+    }
+
+    ctx.fillRect(-pixelW * 0.5, -pixelH * 0.5, pixelW, pixelH);
+    ctx.strokeRect(-pixelW * 0.5, -pixelH * 0.5, pixelW, pixelH);
+
+    // Front orientation indicator line
+    if (!isStatic) {
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)';
+      ctx.lineWidth = 1.5 * dpr;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(pixelW * 0.45, 0);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+}
+
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

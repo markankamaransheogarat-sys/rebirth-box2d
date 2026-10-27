@@ -1,0 +1,16 @@
+[package]
+name = "rebirth-box2d-wasm"
+version = "0.1.0"
+description = "WebAssembly bindings and interactive browser demo for rebirth-box2d"
+publish = false
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rebirth-box2d = { path = "../rebirth-box2d" }
+wasm-bindgen = "0.2"

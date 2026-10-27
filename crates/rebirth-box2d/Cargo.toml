@@ -1,0 +1,30 @@
+[package]
+name = "rebirth-box2d"
+version = "0.1.0"
+description = "A safe, zero-unsafe Rust port of Erin Catto's classic Box2D-Lite 2D physics engine. Features sequential impulses, warm starting, joint constraints, no_std, and WebAssembly support."
+readme = "../../README.md"
+homepage = "https://markankamaransheogarat-sys.github.io/rebirth-box2d/"
+documentation = "https://docs.rs/rebirth-box2d"
+keywords = ["physics", "2d", "box2d", "simulation", "game-development"]
+categories = ["algorithms", "game-development", "no-std", "wasm", "science"]
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[features]
+default = ["std"]
+# Standard library math operations
+std = []
+# Software float math for pure no_std embedded/microcontroller environments
+libm = ["dep:libm"]
+
+[dependencies]
+libm = { version = "0.2", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+
+[[bench]]
+name = "physics"
+harness = false
